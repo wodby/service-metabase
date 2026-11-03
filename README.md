@@ -29,31 +29,12 @@ configuration for Metabase.
 
 ## Use this service
 
-Use this service through [Metabase application stack](https://github.com/wodby/stack-metabase), or reference
-`metabase` from a custom Wodby stack.
+Use this service through [Metabase application stack](https://github.com/wodby/stack-metabase), or reference `metabase` from a
+custom Wodby stack.
 
 A service is a reusable component and does not deploy by itself. The stack
 defines its links, settings, versions, resources, and relationship to the rest
 of the application.
-
-## Maintain a custom version
-
-1. Fork this repository.
-2. Edit the service manifest and referenced files.
-3. Import the repository as a [Git-backed service](https://wodby.com/docs/2.0/services/create/#create-a-git-backed-service).
-4. Reference the service from a stack manifest.
-
-Keep service, workload, container, endpoint, link, volume, config, and
-derivative names stable unless dependent stacks and app-level overrides are
-updated at the same time.
-
-Validate the manifests with:
-
-```bash
-wodby service validate-manifest service.yml --org <org-id> --include GUIDANCE.md
-```
-
-See the [service manifest reference](https://wodby.com/docs/2.0/services/template/) and the [managed services index](https://github.com/wodby/services).
 
 ## First administrator
 
@@ -69,3 +50,22 @@ Metabase migrates its application database when a newer version starts, and
 older versions can't use a migrated database. Deployments stop every replica
 before the new version starts. Back up the PostgreSQL database before moving
 to a newer version; moving back to an older version is not supported.
+
+## Maintain a custom version
+
+1. Fork this repository.
+2. Edit the service manifest and referenced files.
+3. Import the repository as a [Git-backed service](https://wodby.com/docs/2.0/services/create/#create-a-git-backed-service).
+4. Reference the service from a stack manifest.
+
+Keep service, workload, container, endpoint, link, volume, config, and
+derivative names stable unless dependent stacks and app-level overrides are
+updated at the same time.
+
+Validate the manifests with:
+
+```bash
+wodby service validate-manifest service.yml --org <org-id>
+```
+
+See the [service manifest reference](https://wodby.com/docs/2.0/services/template/) and the [managed services index](https://github.com/wodby/services).
