@@ -1,0 +1,290 @@
+name: metabase
+title: Metabase
+guidance: GUIDANCE.md
+icon: metabase
+type: service
+# Every replica shares the application database, and Metabase coordinates
+# scheduled work through it.
+scalable: true
+
+labels:
+- metabase
+- analytics
+
+options:
+- version: '0.65'
+  tag: v0.65.3
+  default: true
+- version: '0.64'
+  tag: v0.64.5
+
+# Metabase migrates its application database when a new version starts, and an
+# older version can't use the migrated database. All replicas are stopped
+# before the new version starts.
+deployment:
+  strategy: recreate
+  shutdownGracePeriod: 60s
+
+endpoints:
+- name: metabase
+  ports:
+  - name: http
+    number: 3000
+    protocol: http
+    main: true
+    routeDefaults:
+      https_redirect: 'true'
+
+tokens:
+- name: encryption_key
+  generate:
+    regex: '[A-Za-z0-9]{64}'
+- name: session_key
+  generate:
+    regex: '[A-Za-z0-9]{64}'
+
+settings:
+# The administrator account the first deployment creates. Metabase's setup page
+# is never shown, so no one else can claim a new site first.
+- name: admin-email
+  title: Admin email
+  description: Email address the Metabase administrator signs in with. Used only when the first deployment creates the administrator.
+  required: true
+  var: METABASE_ADMIN_EMAIL
+- name: admin-password
+  title: Admin password
+  description: Password of the Metabase administrator. Used only when the first deployment creates the administrator; it must meet Metabase's password rules.
+  required: true
+  secret: true
+  var: METABASE_ADMIN_PASSWORD
+
+env:
+- name: MB_SITE_URL
+  value: '{{service.primaryURL}}'
+# Encrypts the database connection details and other secrets Metabase stores.
+- name: MB_ENCRYPTION_SECRET_KEY
+  value: '{{encryption_key}}'
+  secret: true
+# Signs sessions, so that access to the database alone can't forge one.
+# Changing it signs everyone out.
+- name: MB_SESSION_SECRET_KEY
+  value: '{{session_key}}'
+  secret: true
+- name: MB_DB_TYPE
+  value: postgres
+# The site name on the first deployment; it can be changed in Metabase later.
+- name: METABASE_SITE_NAME
+  value: '{{app.title}}'
+- name: JAVA_OPTS
+  value: -XX:MaxRAMPercentage=75
+
+links:
+- name: postgres
+  title: PostgreSQL
+  required: true
+  selectors:
+  - type: db
+    labels:
+    - postgres
+  env:
+  - name: MB_DB_HOST
+    value: '{{link.database.host}}'
+  - name: MB_DB_PORT
+    value: '{{link.database.port}}'
+  - name: MB_DB_DBNAME
+    value: '{{link.database.db.name}}'
+  - name: MB_DB_USER
+    value: '{{link.database.user.name}}'
+    secret: true
+  - name: MB_DB_PASS
+    value: '{{link.database.user.password}}'
+    secret: true
+- name: sendmail
+  title: SMTP server
+  selectors:
+  - type: service
+    labels:
+    - smtpd
+  env:
+  - name: MB_EMAIL_SMTP_HOST
+    value: '{{link.host}}'
+  - name: MB_EMAIL_SMTP_PORT
+    value: '{{link.port}}'
+  - name: MB_EMAIL_SMTP_SECURITY
+    value: none
+
+helm:
+  name: wodby
+  source: oci://registry-1.docker.io/wodby/stateless
+  chart: oci://registry-1.docker.io/wodby/stateless
+  version: 0.4.0
+  valueMappings:
+    replicas: replicaCount
+    nameOverride: nameOverride
+    fullnameOverride: fullnameOverride
+    serviceAccountName: serviceAccount.name
+    serviceAccountCreate: serviceAccount.create
+    strategy: strategy
+    minReady: minReadySeconds
+    progressDeadline: progressDeadlineSeconds
+    shutdownGracePeriod: terminationGracePeriodSeconds
+  values:
+  - name: containerName
+    value: metabase
+  - name: containerPorts
+    value:
+    - name: http
+      containerPort: 3000
+      protocol: TCP
+  - name: securityContext
+    value:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      runAsGroup: 2000
+      runAsNonRoot: true
+      runAsUser: 2000
+  - name: command
+    value:
+    - /bin/bash
+    - -c
+    - |
+      set -u
+      # Starts Metabase and, on the first start, creates its first administrator from
+      # the service settings before the pod reports ready, so the public setup page
+      # is never open to anyone else. The readiness probe waits for the ready file.
+      ready_file=/tmp/metabase-ready
+      rm -f "$ready_file"
+
+      /app/run_metabase.sh &
+      pid=$!
+      trap 'kill -TERM "$pid" 2>/dev/null' TERM INT
+
+      fail() {
+        echo "$1" >&2
+        kill -TERM "$pid" 2>/dev/null
+        wait "$pid"
+        exit 1
+      }
+
+      # Quotes a value as a JSON string.
+      json() {
+        local s=$1
+        s=${s//\\/\\\\}
+        s=${s//\"/\\\"}
+        s=${s//$'\n'/\\n}
+        s=${s//$'\r'/\\r}
+        s=${s//$'\t'/\\t}
+        printf '"%s"' "$s"
+      }
+
+      has_user() {
+        curl -fsS -m 30 "$url/api/session/properties" | grep -q '"has-user-setup":true'
+      }
+
+      url="http://127.0.0.1:${MB_JETTY_PORT:-3000}"
+      until curl -fsS -o /dev/null -m 5 "$url/api/health" 2>/dev/null; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+          wait "$pid"
+          exit $?
+        fi
+        sleep 2
+      done
+
+      properties=$(curl -fsS -m 30 "$url/api/session/properties") || fail "Metabase did not return its session properties."
+      if ! grep -q '"has-user-setup":true' <<<"$properties"; then
+        if [ -z "${METABASE_ADMIN_EMAIL:-}" ] || [ -z "${METABASE_ADMIN_PASSWORD:-}" ]; then
+          fail "Metabase has no administrator yet. Set the Admin email and Admin password settings of this service and deploy again."
+        fi
+        token=$(grep -o '"setup-token":"[^"]*"' <<<"$properties" | cut -d'"' -f4)
+        body="{\"token\":$(json "$token"),\"user\":{\"email\":$(json "$METABASE_ADMIN_EMAIL"),\"password\":$(json "$METABASE_ADMIN_PASSWORD")},\"prefs\":{\"site_name\":$(json "${METABASE_SITE_NAME:-Metabase}")}}"
+        # The body is passed on stdin so that the password never appears in a
+        # process list.
+        response=$(curl -sS -m 120 -w '\n%{http_code}' -H 'Content-Type: application/json' --data-binary @- "$url/api/setup" <<<"$body")
+        status=${response##*$'\n'}
+        response=${response%$'\n'*}
+        if [ "$status" = 200 ]; then
+          session=$(grep -o '"id":"[^"]*"' <<<"$response" | head -n 1 | cut -d'"' -f4)
+          # Metabase turns usage tracking on during setup. It is turned off here and
+          # can be turned on again in Metabase's settings. The setup session is then
+          # signed out. Without a domain, Metabase takes its site URL from the first
+          # request by an administrator unless its user agent names a health
+          # checker, so these requests don't set it to this local address.
+          agent='Wodby HealthChecker'
+          printf 'header = "X-Metabase-Session: %s"\n' "$session" |
+            curl -fsS -o /dev/null -m 30 -A "$agent" -K - -X PUT -H 'Content-Type: application/json' \
+              --data '{"value":false}' "$url/api/setting/anon-tracking-enabled" ||
+            echo "Could not turn off Metabase usage tracking." >&2
+          printf 'header = "X-Metabase-Session: %s"\n' "$session" |
+            curl -fsS -o /dev/null -m 30 -A "$agent" -K - -X DELETE "$url/api/session" ||
+            echo "Could not sign out Metabase's setup session." >&2
+          echo "Created the Metabase administrator ${METABASE_ADMIN_EMAIL}."
+        elif ! has_user; then
+          # Another replica may have finished setup first; anything else is an error.
+          fail "Metabase refused to create the administrator (HTTP ${status}): ${response//"$METABASE_ADMIN_PASSWORD"/***}"
+        fi
+      fi
+
+      touch "$ready_file"
+      while :; do
+        wait "$pid"
+        status=$?
+        kill -0 "$pid" 2>/dev/null || exit "$status"
+      done
+  # Ready only after the start script has made sure an administrator exists.
+  - name: startupProbe
+    value:
+      exec:
+        command:
+        - sh
+        - -c
+        - test -f /tmp/metabase-ready && curl -fsS -o /dev/null -m 5 http://127.0.0.1:3000/api/health
+      # Database migrations on a new version can take several minutes.
+      failureThreshold: 90
+      periodSeconds: 10
+      timeoutSeconds: 10
+  - name: readinessProbe
+    value:
+      exec:
+        command:
+        - sh
+        - -c
+        - test -f /tmp/metabase-ready && curl -fsS -o /dev/null -m 5 http://127.0.0.1:3000/api/health
+      failureThreshold: 3
+      periodSeconds: 10
+      timeoutSeconds: 10
+  - name: livenessProbe
+    value:
+      httpGet:
+        path: /api/health
+        port: http
+      failureThreshold: 6
+      periodSeconds: 10
+      timeoutSeconds: 5
+
+workloads:
+- name: main
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: '{{helm.release}}'
+  kind: deployment
+  primary: true
+  helm:
+    labels: podLabels
+    annotations: podAnnotations
+    volumes: extraVolumes
+  containers:
+  - name: metabase
+    image: metabase/metabase
+    resources:
+      request:
+        cpu: 500
+        memory: 1536
+      limit:
+        cpu: 2000
+        memory: 3072
+    helm:
+      resources: resources
+      env: envVars
+      mounts: extraVolumeMounts
