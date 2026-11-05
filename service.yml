@@ -13,14 +13,16 @@ labels:
 
 options:
 - version: '0.65'
-  tag: v0.65.3
+  tag: v0.65.3.3
   default: true
+  eol: '2027-01-01T00:00:00+00:00'
 - version: '0.64'
-  tag: v0.64.5
+  tag: v0.64.5.2
 
 # Metabase migrates its application database when a new version starts, and an
 # older version can't use the migrated database. All replicas are stopped
 # before the new version starts.
+  eol: '2027-12-01T00:00:00+00:00'
 deployment:
   strategy: recreate
   shutdownGracePeriod: 60s
