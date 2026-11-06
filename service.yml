@@ -13,7 +13,7 @@ labels:
 
 options:
 - version: '0.65'
-  tag: v0.65.3.3
+  tag: v0.65.3.4
   default: true
   eol: '2027-01-01T00:00:00+00:00'
 - version: '0.64'
@@ -50,12 +50,15 @@ settings:
 # is never shown, so no one else can claim a new site first.
 - name: admin-email
   title: Admin email
-  description: Email address the Metabase administrator signs in with. Used only when the first deployment creates the administrator.
+  description: Email address the Metabase administrator signs in with. Used only
+    when the first deployment creates the administrator.
   required: true
   var: METABASE_ADMIN_EMAIL
 - name: admin-password
   title: Admin password
-  description: Password of the Metabase administrator. Used only when the first deployment creates the administrator; it must meet Metabase's password rules.
+  description: Password of the Metabase administrator. Used only when the first 
+    deployment creates the administrator; it must meet Metabase's password 
+    rules.
   required: true
   secret: true
   var: METABASE_ADMIN_PASSWORD
@@ -241,7 +244,8 @@ helm:
         command:
         - sh
         - -c
-        - test -f /tmp/metabase-ready && curl -fsS -o /dev/null -m 5 http://127.0.0.1:3000/api/health
+        - test -f /tmp/metabase-ready && curl -fsS -o /dev/null -m 5 
+          http://127.0.0.1:3000/api/health
       # Database migrations on a new version can take several minutes.
       failureThreshold: 90
       periodSeconds: 10
@@ -252,7 +256,8 @@ helm:
         command:
         - sh
         - -c
-        - test -f /tmp/metabase-ready && curl -fsS -o /dev/null -m 5 http://127.0.0.1:3000/api/health
+        - test -f /tmp/metabase-ready && curl -fsS -o /dev/null -m 5 
+          http://127.0.0.1:3000/api/health
       failureThreshold: 3
       periodSeconds: 10
       timeoutSeconds: 10
