@@ -13,7 +13,7 @@ labels:
 
 options:
 - version: '0.65'
-  tag: v0.65.4
+  tag: v0.65.4.1
   default: true
   eol: '2027-01-01T00:00:00+00:00'
 - version: '0.64'
