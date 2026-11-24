@@ -18,12 +18,12 @@ options:
   default: true
   eol: '2027-01-01T00:00:00+00:00'
 - version: '0.64'
-  tag: v0.64.8.3
+  tag: v0.64.8.4
 
 # Metabase migrates its application database when a new version starts, and an
 # older version can't use the migrated database. All replicas are stopped
 # before the new version starts.
-  digest: sha256:e2a0fe3057b053e8b9f762459814b0f51b37c30aed38f1f738d753e7a8f00bd5
+  digest: sha256:c6617794e80e4d5a0fbb4ea903c6989c1c284920b9b78caca12ba24f864ca0d8
   eol: '2027-12-01T00:00:00+00:00'
 deployment:
   strategy: recreate
