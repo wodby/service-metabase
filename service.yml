@@ -13,17 +13,17 @@ labels:
 
 options:
 - version: '0.65'
-  tag: v0.65.7.2
-  digest: sha256:f9dfe4929a658770371fbc5b60d9ed16520a7b8859f43463e7a6068f4cd7fd61
+  tag: v0.65.7.3
+  digest: sha256:560f9eaa0438fa5b85060905b38afacf7460f890ee5d8821c286696c5cef7f27
   default: true
   eol: '2027-01-01T00:00:00+00:00'
 - version: '0.64'
-  tag: v0.64.9.1
+  tag: v0.64.9.2
 
 # Metabase migrates its application database when a new version starts, and an
 # older version can't use the migrated database. All replicas are stopped
 # before the new version starts.
-  digest: sha256:8dae9b3d4cf26d1442dadc589b115449b1652a69bbeb33d5dac74bbc51bc88ff
+  digest: sha256:a747570e2ef436dcf1a47f1943fb42c561a0cc18cd9f316329b22017a589195b
   eol: '2027-12-01T00:00:00+00:00'
 deployment:
   strategy: recreate
